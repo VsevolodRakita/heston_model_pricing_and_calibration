@@ -69,3 +69,56 @@ set_tests_properties(
     PROPERTIES
         LABELS "monte_carlo;slow"
 )
+
+add_executable(test_limit_cases_and_stability
+    test_main.cpp
+    test_limit_cases_and_stability.cpp
+)
+target_link_libraries(test_limit_cases_and_stability PRIVATE heston_core)
+
+add_test(NAME test_limit_cases_and_stability COMMAND test_limit_cases_and_stability)
+set_tests_properties(test_limit_cases_and_stability PROPERTIES LABELS "fast;stability")
+
+add_executable(test_implied_vol
+  test_main.cpp
+  test_implied_vol.cpp
+)
+
+target_include_directories(test_implied_vol PRIVATE
+  ${CMAKE_SOURCE_DIR}/include
+  ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_link_libraries(test_implied_vol PRIVATE heston_core)
+add_test(NAME test_implied_vol COMMAND test_implied_vol)
+set_tests_properties(test_implied_vol PROPERTIES LABELS "fast;vol")
+
+add_executable(test_calibration_synthetic
+  test_main.cpp
+  test_calibration_synthetic.cpp
+)
+
+target_include_directories(test_calibration_synthetic PRIVATE
+  ${CMAKE_SOURCE_DIR}/include
+  ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_link_libraries(test_calibration_synthetic PRIVATE heston_core)
+
+add_test(NAME test_calibration_synthetic COMMAND test_calibration_synthetic)
+set_tests_properties(test_calibration_synthetic PROPERTIES LABELS "slow;calibration")
+
+add_executable(test_calibration_extended
+  test_main.cpp
+  test_calibration_extended.cpp
+)
+
+target_include_directories(test_calibration_extended PRIVATE
+  ${CMAKE_SOURCE_DIR}/include
+  ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_link_libraries(test_calibration_extended PRIVATE heston_core)
+
+add_test(NAME test_calibration_extended COMMAND test_calibration_extended)
+set_tests_properties(test_calibration_extended PROPERTIES LABELS "slow;calibration")

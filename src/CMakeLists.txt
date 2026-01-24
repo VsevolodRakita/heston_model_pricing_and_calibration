@@ -6,6 +6,11 @@ target_sources(heston_core
     models/heston/characteristic_function.cpp
     pricers/fft/heston_fourier_pricer.cpp
     pricers/mc/heston_monte_carlo_pricer.cpp
+    vol/black_scholes.cpp
+    vol/implied_vol.cpp
+    calibration/objective.cpp
+    calibration/calibrator.cpp
+    optimization/nelder_mead.cpp
 )
 
 target_include_directories(heston_core
