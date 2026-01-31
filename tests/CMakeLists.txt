@@ -122,3 +122,18 @@ target_link_libraries(test_calibration_extended PRIVATE heston_core)
 
 add_test(NAME test_calibration_extended COMMAND test_calibration_extended)
 set_tests_properties(test_calibration_extended PROPERTIES LABELS "slow;calibration")
+
+add_executable(test_calibration_price_cmaes
+  test_main.cpp
+  test_calibration_price_cmaes.cpp
+)
+
+target_include_directories(test_calibration_price_cmaes PRIVATE
+  ${CMAKE_SOURCE_DIR}/include
+  ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_link_libraries(test_calibration_price_cmaes PRIVATE heston_core)
+
+add_test(NAME test_calibration_price_cmaes COMMAND test_calibration_price_cmaes)
+set_tests_properties(test_calibration_price_cmaes PROPERTIES LABELS "slow;calibration")

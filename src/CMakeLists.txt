@@ -11,6 +11,10 @@ target_sources(heston_core
     calibration/objective.cpp
     calibration/calibrator.cpp
     optimization/nelder_mead.cpp
+    calibration/prepare_quotes.cpp
+    calibration/objective_price.cpp
+    calibration/calibrator_price.cpp
+    optimization/cma_es.cpp
 )
 
 target_include_directories(heston_core

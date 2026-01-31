@@ -11,7 +11,7 @@ struct HestonParams {
   double sigma;
   double rho;
 
-  HestonParams() = delete;
+  HestonParams() {};
 
   constexpr HestonParams(double v0_,
                          double kappa_,
