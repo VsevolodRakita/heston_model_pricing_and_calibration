@@ -15,6 +15,7 @@ target_sources(heston_core
     calibration/objective_price.cpp
     calibration/calibrator_price.cpp
     optimization/cma_es.cpp
+    greeks/greeks.cpp
 )
 
 target_include_directories(heston_core

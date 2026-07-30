@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 #include "utils/errors.hpp"
 
@@ -80,6 +81,70 @@ double black_scholes_vega(
       (std::log(mkt.s0 / opt.K) + (mkt.r - mkt.q + 0.5 * vol * vol) * opt.T) / sig_sqrtT;
 
   return mkt.s0 * disc_q * bs_detail::norm_pdf_(d1) * sqrtT;
+}
+
+namespace {
+
+struct D1D2 { double d1; double d2; };
+
+// Shared d1/d2 for the closed-form Greeks. Requires vol > 0 (caller checks).
+D1D2 d1_d2_(const VanillaOption& opt, const Market& mkt, double vol) {
+  const double sig_sqrtT = vol * std::sqrt(opt.T);
+  const double d1 =
+      (std::log(mkt.s0 / opt.K) + (mkt.r - mkt.q + 0.5 * vol * vol) * opt.T) / sig_sqrtT;
+  return {d1, d1 - sig_sqrtT};
+}
+
+void validate_greek_(const char* who, const VanillaOption& opt,
+                     const Market& mkt, double vol) {
+  if (!mkt.is_valid_basic()) throw InvalidInput(std::string(who) + ": invalid market");
+  if (!opt.is_valid_basic()) throw InvalidInput(std::string(who) + ": invalid option (need K>0, T>0)");
+  if (!std::isfinite(vol) || vol <= 0.0) throw InvalidInput(std::string(who) + ": vol must be finite and > 0");
+}
+
+} // namespace
+
+double black_scholes_delta(const VanillaOption& opt, const Market& mkt, double vol) {
+  validate_greek_("black_scholes_delta", opt, mkt, vol);
+  const D1D2 dd = d1_d2_(opt, mkt, vol);
+  const double disc_q = std::exp(-mkt.q * opt.T);
+  if (opt.type == OptionType::Call) return disc_q * bs_detail::norm_cdf_(dd.d1);
+  return disc_q * (bs_detail::norm_cdf_(dd.d1) - 1.0);
+}
+
+double black_scholes_gamma(const VanillaOption& opt, const Market& mkt, double vol) {
+  validate_greek_("black_scholes_gamma", opt, mkt, vol);
+  const D1D2 dd = d1_d2_(opt, mkt, vol);
+  const double disc_q = std::exp(-mkt.q * opt.T);
+  return disc_q * bs_detail::norm_pdf_(dd.d1) / (mkt.s0 * vol * std::sqrt(opt.T));
+}
+
+double black_scholes_theta(const VanillaOption& opt, const Market& mkt, double vol) {
+  validate_greek_("black_scholes_theta", opt, mkt, vol);
+  const D1D2 dd = d1_d2_(opt, mkt, vol);
+  const double disc_q = std::exp(-mkt.q * opt.T);
+  const double disc_r = std::exp(-mkt.r * opt.T);
+
+  // Common term: -S0 e^{-qT} n(d1) vol / (2 sqrt(T))
+  const double decay =
+      -(mkt.s0 * disc_q * bs_detail::norm_pdf_(dd.d1) * vol) / (2.0 * std::sqrt(opt.T));
+
+  if (opt.type == OptionType::Call) {
+    return decay
+         - mkt.r * opt.K * disc_r * bs_detail::norm_cdf_(dd.d2)
+         + mkt.q * mkt.s0 * disc_q * bs_detail::norm_cdf_(dd.d1);
+  }
+  return decay
+       + mkt.r * opt.K * disc_r * bs_detail::norm_cdf_(-dd.d2)
+       - mkt.q * mkt.s0 * disc_q * bs_detail::norm_cdf_(-dd.d1);
+}
+
+double black_scholes_rho(const VanillaOption& opt, const Market& mkt, double vol) {
+  validate_greek_("black_scholes_rho", opt, mkt, vol);
+  const D1D2 dd = d1_d2_(opt, mkt, vol);
+  const double disc_r = std::exp(-mkt.r * opt.T);
+  if (opt.type == OptionType::Call) return opt.K * opt.T * disc_r * bs_detail::norm_cdf_(dd.d2);
+  return -opt.K * opt.T * disc_r * bs_detail::norm_cdf_(-dd.d2);
 }
 
 } // namespace heston

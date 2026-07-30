@@ -93,6 +93,20 @@ target_link_libraries(test_implied_vol PRIVATE heston_core)
 add_test(NAME test_implied_vol COMMAND test_implied_vol)
 set_tests_properties(test_implied_vol PROPERTIES LABELS "fast;vol")
 
+add_executable(test_greeks
+  test_main.cpp
+  test_greeks.cpp
+)
+
+target_include_directories(test_greeks PRIVATE
+  ${CMAKE_SOURCE_DIR}/include
+  ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_link_libraries(test_greeks PRIVATE heston_core)
+add_test(NAME test_greeks COMMAND test_greeks)
+set_tests_properties(test_greeks PROPERTIES LABELS "fast;greeks")
+
 add_executable(test_calibration_synthetic
   test_main.cpp
   test_calibration_synthetic.cpp

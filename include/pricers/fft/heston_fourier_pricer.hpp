@@ -29,6 +29,24 @@ public:
       const Market& mkt,
       const HestonParams& p) const override;
 
+  // Semi-analytic Greeks: price, delta, gamma and rho computed by
+  // differentiating the Carr–Madan integral under the integral sign (a single
+  // quadrature pass shared across all four quantities). Spot Greeks come from
+  // d/d(log S0) of the characteristic function; rho from the (r - q) drift and
+  // the e^{-rT} discount. Theta and the Heston-parameter sensitivities are
+  // available via the finite-difference engine in greeks/greeks.hpp.
+  struct AnalyticGreeks {
+    double price = 0.0;
+    double delta = 0.0;   // dV/dS0
+    double gamma = 0.0;   // d2V/dS0^2
+    double rho   = 0.0;   // dV/dr
+  };
+
+  [[nodiscard]] AnalyticGreeks analytic_greeks(
+      const VanillaOption& opt,
+      const Market& mkt,
+      const HestonParams& p) const;
+
   [[nodiscard]] const Settings& settings() const noexcept { return settings_; }
 
 private:
