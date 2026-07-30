@@ -19,6 +19,12 @@ Testing/
 *.dll
 *.exe
 
+# Python
+__pycache__/
+*.pyc
+*.pyd
+.ipynb_checkpoints/
+
 # IDE / editor
 .vscode/
 .idea/

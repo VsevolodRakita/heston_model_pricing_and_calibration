@@ -35,7 +35,12 @@ It is described by five parameters (`heston::HestonParams`):
 - **Heston characteristic function** — "Little Heston Trap" formulation for numerical stability (`HestonCharacteristicFunction`).
 - **Fourier pricer** — Carr–Madan damped-transform pricing with Simpson integration (`HestonFourierPricer`). Fast and deterministic; the workhorse for calibration.
 - **Monte Carlo pricer** — full-truncation Euler, Milstein, and Andersen **QE** variance schemes, with antithetic variates and standard-error reporting (`HestonMonteCarloPricer`).
-- **Volatility toolkit** — Black–Scholes price & vega, and a robust implied-vol solver (bracketing + bisection with a Newton polish).
+- **Volatility toolkit** — Black–Scholes price, closed-form Greeks (delta, gamma, vega, theta, rho), and a robust implied-vol solver (bracketing + bisection with a Newton polish).
+- **Greeks** — two routes:
+  - a model-agnostic **finite-difference engine** (`compute_greeks_fd`) giving delta, gamma, theta and rho against *any* `IVanillaPricer`, plus the five Heston parameter sensitivities (`compute_param_sensitivities_fd` — the "vega bucket");
+  - **semi-analytic** delta/gamma/rho on the Fourier pricer (`analytic_greeks`), obtained by differentiating the Carr–Madan integral under the integral sign (one quadrature pass for price + Greeks).
+  Both are validated against the closed-form Black–Scholes Greeks and put–call parity.
+- **Python bindings** — a `pybind11` module (`heston`) exposing the pricers, implied vol, Greeks and calibration, plus a demo notebook that plots the implied-vol surface, the Greek profiles and a calibration round-trip.
 - **Calibration** — fit the five parameters to a set of market quotes:
   - to **implied-vol** quotes via Nelder–Mead (`calibrate_heston_to_iv`),
   - to **price** quotes via CMA-ES (`calibrate_heston_to_prices_cmaes`), with an optimization trace and final residuals.
@@ -48,6 +53,10 @@ It is described by five parameters (`heston::HestonParams`):
 
 - A **C++20** compiler (MSVC 2019+, GCC 10+, or Clang 12+)
 - **CMake ≥ 3.20**
+
+> **Windows note:** the build only needs a C++20 compiler on the `PATH`. If you don't have Visual Studio, the quickest route is [MSYS2](https://www.msys2.org/): install it, then from the *UCRT64* shell run
+> `pacman -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja`
+> and build with `-G Ninja`. This project is developed and tested against GCC 16 (C++20).
 
 ## Building
 
@@ -86,11 +95,14 @@ include/                     # public headers (installed interface)
   products/                  # VanillaOption, OptionType
   pricers/                   # IVanillaPricer interface, FFT + Monte Carlo pricers
   vol/                       # Black–Scholes, implied vol
+  greeks/                    # finite-difference Greeks engine
   optimization/              # Nelder–Mead, CMA-ES
   calibration/               # quotes, objectives, calibrators, reports
   utils/                     # errors, numerics, stats, rng
 src/                         # implementations (compiled into heston_core)
 tests/                       # doctest-based unit tests (+ vendored doctest.h)
+bindings/                    # pybind11 module (optional, -DHESTON_BUILD_PYTHON=ON)
+notebooks/                   # Python demo notebook + generated figures
 ```
 
 ---
@@ -136,6 +148,24 @@ Both pricers implement the common `IVanillaPricer` interface (`price`, `priceBat
 double iv = implied_vol_black_scholes(call, mkt, price);
 ```
 
+### Compute Greeks
+
+The Greeks engine works against any pricer, so the same call gives you Fourier or Monte Carlo risk:
+
+```cpp
+#include "greeks/greeks.hpp"
+
+HestonFourierPricer pricer;
+
+Greeks g = compute_greeks_fd(pricer, call, mkt, params);
+// g.delta, g.gamma, g.theta, g.rho  (sensitivities to spot, time, rate)
+
+HestonParamSensitivities s = compute_param_sensitivities_fd(pricer, call, mkt, params);
+// s.d_v0 (the Heston vega), s.d_kappa, s.d_theta, s.d_sigma, s.d_rho
+```
+
+For a constant-volatility benchmark, the closed-form Black–Scholes Greeks are also available directly (`black_scholes_delta`, `_gamma`, `_vega`, `_theta`, `_rho` in `vol/black_scholes.hpp`).
+
 ### Calibrate to implied-vol quotes (Nelder–Mead)
 
 ```cpp
@@ -169,6 +199,39 @@ CalibrationReport        report =
 > Calibration runs on the deterministic Fourier pricer and searches over the unconstrained ℝ⁵ parameterization, keeping every candidate a valid Heston parameter set.
 
 ---
+
+## Python bindings
+
+The C++ engine is exposed to Python through a `pybind11` module. Enable it at
+configure time (requires `pybind11` and a Python development install):
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DHESTON_BUILD_PYTHON=ON
+cmake --build build --target heston_py
+```
+
+This produces an importable `heston` module in `build/bindings/`. From there:
+
+```python
+import heston as h
+
+mkt    = h.Market(s0=100.0, r=0.03, q=0.01)
+params = h.HestonParams(v0=0.04, kappa=1.5, theta=0.05, sigma=0.6, rho=-0.7)
+fp     = h.HestonFourierPricer(alpha=1.5, u_max=250.0, n_intervals_even=12000)
+
+call = h.VanillaOption(h.OptionType.Call, 100.0, 1.0)
+px   = fp.price(call, mkt, params)
+g    = fp.analytic_greeks(call, mkt, params)   # g.price, g.delta, g.gamma, g.rho
+iv   = h.implied_vol(call, mkt, px)
+```
+
+The notebook [`notebooks/heston_demo.ipynb`](notebooks/heston_demo.ipynb) builds a
+Heston implied-vol surface, plots the analytic Greek profiles, and runs a
+calibration round-trip (recovering the parameters from synthetic prices):
+
+| Implied-vol surface | Greeks vs strike | Calibration round-trip |
+|:---:|:---:|:---:|
+| ![IV surface](notebooks/img/iv_surface.png) | ![Greeks](notebooks/img/greeks.png) | ![Calibration](notebooks/img/calibration.png) |
 
 ## Numerical notes & conventions
 
