@@ -74,7 +74,15 @@ OptimizeResult cma_es_minimize(
   best.f_best = f(x0);
   if (!std::isfinite(best.f_best)) throw NumericFailure("cma_es_minimize: objective non-finite at x0");
 
-  double prev_best = best.f_best;
+  // Generation-best history for a robust TolFun stopping test: terminate only
+  // when the best objective has stagnated across a *window* of generations, not
+  // the instant a single generation fails to improve the incumbent (which is
+  // normal in CMA-ES and previously caused premature termination after a
+  // handful of iterations).
+  const std::size_t stop_hist =
+      10 + static_cast<std::size_t>(std::ceil(30.0 * static_cast<double>(n) / static_cast<double>(lambda)));
+  std::vector<double> recent_best;
+  recent_best.reserve(stop_hist);
 
   struct Candidate { std::vector<double> x; std::vector<double> z; double fx; };
   std::vector<Candidate> pop;
@@ -154,11 +162,18 @@ OptimizeResult cma_es_minimize(
     sigma = std::max(1e-12, sigma);
 
     // stopping checks
-    if (std::abs(prev_best - best.f_best) < s.tol_f) {
-      best.iters = iter + 1;
-      return best;
+    recent_best.push_back(pop[0].fx);
+    if (recent_best.size() > stop_hist) {
+      recent_best.erase(recent_best.begin());
     }
-    prev_best = best.f_best;
+    if (recent_best.size() == stop_hist) {
+      const double hi = *std::max_element(recent_best.begin(), recent_best.end());
+      const double lo = *std::min_element(recent_best.begin(), recent_best.end());
+      if (hi - lo < s.tol_f) {
+        best.iters = iter + 1;
+        return best;
+      }
+    }
 
     if (sigma < s.tol_x) {
       best.iters = iter + 1;
