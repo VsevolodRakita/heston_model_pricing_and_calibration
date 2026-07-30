@@ -95,7 +95,9 @@ double HestonFourierPricer::call_price_carr_madan_(
 
   const double integral = simpson(integrand, 0.0, u_max, n);
 
-  double price = std::exp(-alpha * log_k) * (integral / pi);
+  // Carr–Madan call price. The characteristic function carries the (r - q)
+  // forward drift but NOT discounting, so the e^{-rT} factor is applied here.
+  double price = std::exp(-mkt.r * t) * std::exp(-alpha * log_k) * (integral / pi);
 
   if (price < 0.0 && price > -1e-10) price = 0.0;
   if (!std::isfinite(price)) {
