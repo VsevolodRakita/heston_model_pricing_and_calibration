@@ -151,3 +151,40 @@ target_link_libraries(test_calibration_price_cmaes PRIVATE heston_core)
 
 add_test(NAME test_calibration_price_cmaes COMMAND test_calibration_price_cmaes)
 set_tests_properties(test_calibration_price_cmaes PROPERTIES LABELS "slow;calibration")
+
+# ---- Machine-learning surrogate (GPR) -------------------------------------
+add_executable(test_linalg
+  test_main.cpp
+  test_linalg.cpp
+)
+target_include_directories(test_linalg PRIVATE
+  ${CMAKE_SOURCE_DIR}/include
+  ${CMAKE_SOURCE_DIR}/tests
+)
+target_link_libraries(test_linalg PRIVATE heston_core)
+add_test(NAME test_linalg COMMAND test_linalg)
+set_tests_properties(test_linalg PROPERTIES LABELS "fast;ml")
+
+add_executable(test_gaussian_process
+  test_main.cpp
+  test_gaussian_process.cpp
+)
+target_include_directories(test_gaussian_process PRIVATE
+  ${CMAKE_SOURCE_DIR}/include
+  ${CMAKE_SOURCE_DIR}/tests
+)
+target_link_libraries(test_gaussian_process PRIVATE heston_core)
+add_test(NAME test_gaussian_process COMMAND test_gaussian_process)
+set_tests_properties(test_gaussian_process PROPERTIES LABELS "fast;ml")
+
+add_executable(test_gpr_pricer
+  test_main.cpp
+  test_gpr_pricer.cpp
+)
+target_include_directories(test_gpr_pricer PRIVATE
+  ${CMAKE_SOURCE_DIR}/include
+  ${CMAKE_SOURCE_DIR}/tests
+)
+target_link_libraries(test_gpr_pricer PRIVATE heston_core)
+add_test(NAME test_gpr_pricer COMMAND test_gpr_pricer)
+set_tests_properties(test_gpr_pricer PROPERTIES LABELS "slow;ml")

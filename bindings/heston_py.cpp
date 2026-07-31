@@ -5,11 +5,15 @@
 #include <pybind11/stl.h>
 #include <pybind11/operators.h>
 
+#include <cstdint>
+#include <utility>
+
 #include "models/heston/market.hpp"
 #include "models/heston/heston_params.hpp"
 #include "products/vanilla_option.hpp"
 #include "pricers/fft/heston_fourier_pricer.hpp"
 #include "pricers/mc/heston_monte_carlo_pricer.hpp"
+#include "pricers/ml/gpr_pricer.hpp"
 #include "vol/black_scholes.hpp"
 #include "vol/implied_vol.hpp"
 #include "greeks/greeks.hpp"
@@ -60,6 +64,14 @@ PYBIND11_MODULE(heston, m) {
       .def_readwrite("K", &VanillaOption::K)
       .def_readwrite("T", &VanillaOption::T);
 
+  // Common pricer base + diagnostics, so engines are interchangeable in Python
+  // (e.g. any engine can be handed to GprPricer.train).
+  py::class_<IVanillaPricer>(m, "IVanillaPricer");
+
+  py::class_<PriceDiagnostics>(m, "PriceDiagnostics")
+      .def_readonly("std_error", &PriceDiagnostics::stdError)
+      .def_readonly("note", &PriceDiagnostics::note);
+
   // ---- Fourier pricer -------------------------------------------------------
   py::class_<HestonFourierPricer::AnalyticGreeks>(m, "FourierGreeks")
       .def_readonly("price", &HestonFourierPricer::AnalyticGreeks::price)
@@ -67,7 +79,7 @@ PYBIND11_MODULE(heston, m) {
       .def_readonly("gamma", &HestonFourierPricer::AnalyticGreeks::gamma)
       .def_readonly("rho", &HestonFourierPricer::AnalyticGreeks::rho);
 
-  py::class_<HestonFourierPricer>(m, "HestonFourierPricer")
+  py::class_<HestonFourierPricer, IVanillaPricer>(m, "HestonFourierPricer")
       .def(py::init([](double alpha, double u_max, std::size_t n_intervals_even) {
              HestonFourierPricer::Settings s;
              s.alpha = alpha;
@@ -88,7 +100,7 @@ PYBIND11_MODULE(heston, m) {
       .def_readonly("std_error", &HestonMonteCarloPricer::Result::std_error)
       .def_readonly("n_used", &HestonMonteCarloPricer::Result::n_used);
 
-  py::class_<HestonMonteCarloPricer>(m, "HestonMonteCarloPricer")
+  py::class_<HestonMonteCarloPricer, IVanillaPricer>(m, "HestonMonteCarloPricer")
       .def(py::init([](std::size_t n_paths, std::size_t n_steps, std::uint64_t seed) {
              HestonMonteCarloPricer::Settings s;
              s.n_paths = n_paths;
@@ -166,4 +178,38 @@ PYBIND11_MODULE(heston, m) {
         },
         py::arg("quotes"), py::arg("market"), py::arg("initial_guess"),
         "Calibrate the five Heston parameters to price quotes via CMA-ES.");
+
+  // ---- GPR surrogate pricer -------------------------------------------------
+  py::class_<GprPricer, IVanillaPricer>(m, "GprPricer")
+      .def(py::init([](const Market& reference, std::pair<double, double> K,
+                       std::pair<double, double> T, std::pair<double, double> v0,
+                       std::pair<double, double> kappa, std::pair<double, double> theta,
+                       std::pair<double, double> sigma, std::pair<double, double> rho,
+                       std::size_t n_train, std::uint64_t seed, bool optimize_hyperparameters,
+                       std::size_t max_opt_iter) {
+             GprPricer::Config cfg;
+             cfg.reference = reference;
+             cfg.box = GprPricer::Box{K.first,     K.second,     T.first,     T.second,
+                                      v0.first,    v0.second,    kappa.first, kappa.second,
+                                      theta.first, theta.second, sigma.first, sigma.second,
+                                      rho.first,   rho.second};
+             cfg.n_train = n_train;
+             cfg.sample_seed = seed;
+             cfg.gp.optimize_hyperparameters = optimize_hyperparameters;
+             cfg.gp.max_opt_iter = max_opt_iter;
+             return GprPricer(cfg);
+           }),
+           py::arg("reference"), py::arg("K"), py::arg("T"), py::arg("v0"), py::arg("kappa"),
+           py::arg("theta"), py::arg("sigma"), py::arg("rho"), py::arg("n_train") = 1500,
+           py::arg("seed") = 20240607, py::arg("optimize_hyperparameters") = true,
+           py::arg("max_opt_iter") = 200,
+           "GPR surrogate for the Heston price over a box in (K, T, v0, kappa, theta, sigma, rho). "
+           "Each range is a (low, high) tuple; the market (reference) is held fixed.")
+      .def("train", &GprPricer::train, py::arg("truth"),
+           "Train the surrogate by pricing sampled box points with a reference engine "
+           "(e.g. a HestonFourierPricer).")
+      .def("price", &GprPricer::price, py::arg("option"), py::arg("market"), py::arg("params"))
+      .def("diagnostics", &GprPricer::diagnostics,
+           "Predictive std (std_error) and any extrapolation note for the most recent price().")
+      .def("is_trained", &GprPricer::is_trained);
 }

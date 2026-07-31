@@ -160,3 +160,72 @@ fig.tight_layout()
 fig.savefig(IMG / "calibration.png", dpi=130)
 print("saved", IMG / "calibration.png")
 plt.show()
+
+# %% [markdown]
+# ## 4. GPR surrogate pricer
+# Following De Spiegeleer, Madan, Reyners & Schoutens (2018), we train a
+# **Gaussian-process surrogate** for the Heston price over a box in the seven
+# features `(K, T, v0, kappa, theta, sigma, rho)`. The surrogate is trained
+# offline against the Fourier engine and then prices new points with a cheap
+# kernel-vector product. It implements the same `IVanillaPricer` interface, so
+# it is a drop-in engine. Here we reproduce the paper's Fig. 8: out-of-sample
+# GPR prices scattered against the "true" Fourier prices.
+
+# %%
+import time
+
+gpr = h.GprPricer(
+    reference=mkt,
+    K=(80.0, 120.0), T=(0.30, 1.50), v0=(0.02, 0.08), kappa=(1.0, 3.0),
+    theta=(0.02, 0.08), sigma=(0.20, 0.60), rho=(-0.80, -0.20),
+    n_train=1200, seed=20240607, optimize_hyperparameters=True, max_opt_iter=80,
+)
+
+t0 = time.perf_counter()
+gpr.train(fp)                       # offline training against the Fourier engine
+train_secs = time.perf_counter() - t0
+print(f"trained on 1200 points in {train_secs:.1f}s")
+
+# Out-of-sample test set (drawn strictly inside the trained box).
+rng = np.random.default_rng(2024)
+n_test = 400
+true_px = np.empty(n_test)
+gpr_px = np.empty(n_test)
+t_fourier = 0.0
+t_gpr = 0.0
+for i in range(n_test):
+    K = rng.uniform(82.0, 118.0)
+    T = rng.uniform(0.35, 1.45)
+    p = h.HestonParams(
+        v0=rng.uniform(0.025, 0.075), kappa=rng.uniform(1.2, 2.8),
+        theta=rng.uniform(0.025, 0.075), sigma=rng.uniform(0.25, 0.55),
+        rho=rng.uniform(-0.75, -0.25),
+    )
+    opt = h.VanillaOption(h.OptionType.Call, float(K), float(T))
+    a = time.perf_counter(); true_px[i] = fp.price(opt, mkt, p); t_fourier += time.perf_counter() - a
+    b = time.perf_counter(); gpr_px[i] = gpr.price(opt, mkt, p); t_gpr += time.perf_counter() - b
+
+abs_err = np.abs(gpr_px - true_px)
+print(f"out-of-sample abs error   mean = {abs_err.mean():.4e}   max = {abs_err.max():.4e}")
+print(f"avg price time   Fourier = {1e6 * t_fourier / n_test:.1f} us   "
+      f"GPR = {1e6 * t_gpr / n_test:.1f} us   (speed-up x{t_fourier / max(t_gpr, 1e-12):.1f})")
+
+fig, (axL, axR) = plt.subplots(1, 2, figsize=(12, 5))
+lo, hi = float(true_px.min()), float(true_px.max())
+axL.plot([lo, hi], [lo, hi], color="grey", ls="--", lw=1, label="y = x")
+axL.scatter(true_px, gpr_px, s=10, alpha=0.6, color="C0", label="test points")
+axL.set_xlabel("Fourier price (truth)")
+axL.set_ylabel("GPR price")
+axL.set_title("GPR vs Fourier (out-of-sample)")
+axL.legend()
+axL.grid(alpha=0.3)
+
+axR.hist(abs_err, bins=30, color="C3", alpha=0.8)
+axR.set_xlabel("Absolute price error")
+axR.set_ylabel("Count")
+axR.set_title(f"Error distribution (mean {abs_err.mean():.1e})")
+axR.grid(alpha=0.3)
+fig.tight_layout()
+fig.savefig(IMG / "gpr_surrogate.png", dpi=130)
+print("saved", IMG / "gpr_surrogate.png")
+plt.show()

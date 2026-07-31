@@ -17,6 +17,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Allow the static core library to be linked into the Python shared module.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Workaround: some MinGW binutils versions (e.g. ld 2.43.x) crash while writing
+# the import table when linking larger C++ executables against the shared
+# libstdc++/libgcc runtime. Linking the executables statically avoids the crash.
+# This affects add_executable() targets (the test binaries) only — the pybind11
+# module is a MODULE library and is unaffected.
+if(MINGW)
+  set(CMAKE_EXE_LINKER_FLAGS
+      "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -static-libstdc++")
+endif()
+
 # Helpful defaults
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)

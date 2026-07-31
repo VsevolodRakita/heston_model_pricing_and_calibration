@@ -35,6 +35,7 @@ It is described by five parameters (`heston::HestonParams`):
 - **Heston characteristic function** — "Little Heston Trap" formulation for numerical stability (`HestonCharacteristicFunction`).
 - **Fourier pricer** — Carr–Madan damped-transform pricing with Simpson integration (`HestonFourierPricer`). Fast and deterministic; the workhorse for calibration.
 - **Monte Carlo pricer** — full-truncation Euler, Milstein, and Andersen **QE** variance schemes, with antithetic variates and standard-error reporting (`HestonMonteCarloPricer`).
+- **GPR surrogate pricer** — a machine-learning engine (`GprPricer`) that learns the Heston price from either pricer over a box in `(K, T, v0, κ, θ, σ, ρ)` and then prices new points with a **Gaussian-process regression** (`GaussianProcessRegressor`; ARD squared-exponential kernel, hyperparameters fit by CMA-ES, own from-scratch Cholesky in `utils/linalg.hpp`). It implements the same `IVanillaPricer` interface (drop-in engine), returns puts by put–call parity, and reports its predictive standard deviation through `PriceDiagnostics`. Follows De Spiegeleer, Madan, Reyners & Schoutens (2018), *Machine Learning for Quantitative Finance*.
 - **Volatility toolkit** — Black–Scholes price, closed-form Greeks (delta, gamma, vega, theta, rho), and a robust implied-vol solver (bracketing + bisection with a Newton polish).
 - **Greeks** — two routes:
   - a model-agnostic **finite-difference engine** (`compute_greeks_fd`) giving delta, gamma, theta and rho against *any* `IVanillaPricer`, plus the five Heston parameter sensitivities (`compute_param_sensitivities_fd` — the "vega bucket");
@@ -83,7 +84,7 @@ ctest -L fast                 # fast tests only
 ctest -LE slow                # everything except slow tests
 ```
 
-Available labels include `fast`, `slow`, `vol`, `stability`, `monte_carlo`, and `calibration`.
+Available labels include `fast`, `slow`, `vol`, `stability`, `monte_carlo`, `calibration`, and `ml`.
 
 ---
 
@@ -93,12 +94,13 @@ Available labels include `fast`, `slow`, `vol`, `stability`, `monte_carlo`, and 
 include/                     # public headers (installed interface)
   models/heston/             # HestonParams, Market, characteristic function
   products/                  # VanillaOption, OptionType
-  pricers/                   # IVanillaPricer interface, FFT + Monte Carlo pricers
+  pricers/                   # IVanillaPricer interface, FFT + Monte Carlo + GPR surrogate
+  ml/                        # GaussianProcessRegressor (GPR surrogate core)
   vol/                       # Black–Scholes, implied vol
   greeks/                    # finite-difference Greeks engine
   optimization/              # Nelder–Mead, CMA-ES
   calibration/               # quotes, objectives, calibrators, reports
-  utils/                     # errors, numerics, stats, rng
+  utils/                     # errors, numerics, stats, rng, linalg (Cholesky)
 src/                         # implementations (compiled into heston_core)
 tests/                       # doctest-based unit tests (+ vendored doctest.h)
 bindings/                    # pybind11 module (optional, -DHESTON_BUILD_PYTHON=ON)
@@ -197,6 +199,33 @@ CalibrationReport        report =
 ```
 
 > Calibration runs on the deterministic Fourier pricer and searches over the unconstrained ℝ⁵ parameterization, keeping every candidate a valid Heston parameter set.
+
+### Train and use the GPR surrogate pricer
+
+```cpp
+#include "pricers/fft/heston_fourier_pricer.hpp"
+#include "pricers/ml/gpr_pricer.hpp"
+
+using namespace heston;
+
+Market mkt{/*s0=*/100.0, /*r=*/0.02, /*q=*/0.01};
+
+GprPricer::Config cfg;
+cfg.reference = mkt;                                   // the surrogate is trained for this market
+cfg.box = GprPricer::Box{/*K*/ 80, 120,  /*T*/ 0.3, 1.5,  /*v0*/ 0.02, 0.08,
+                         /*kappa*/ 1, 3, /*theta*/ 0.02, 0.08,
+                         /*sigma*/ 0.2, 0.6, /*rho*/ -0.8, -0.2};
+cfg.n_train = 1500;
+
+GprPricer gpr(cfg);
+gpr.train(HestonFourierPricer{});                      // offline: learn from the Fourier engine
+
+// Now price fast for any point in the box (drop-in IVanillaPricer).
+VanillaOption call{OptionType::Call, 100.0, 1.0};
+HestonParams  p{0.04, 2.0, 0.04, 0.4, -0.5};
+double px  = gpr.price(call, mkt, p);
+double sd  = gpr.diagnostics().stdError;               // GP predictive std for that price
+```
 
 ---
 

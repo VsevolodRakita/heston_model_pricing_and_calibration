@@ -16,6 +16,8 @@ target_sources(heston_core
     calibration/calibrator_price.cpp
     optimization/cma_es.cpp
     greeks/greeks.cpp
+    ml/gaussian_process.cpp
+    pricers/ml/gpr_pricer.cpp
 )
 
 target_include_directories(heston_core
