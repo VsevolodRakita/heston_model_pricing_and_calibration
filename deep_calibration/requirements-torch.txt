@@ -1,0 +1,11 @@
+# Training / calibration environment for the deep-learning volatility component.
+# Install into an isolated Python 3.12 venv (torch has no wheels for the MSYS2
+# Python that holds the compiled `heston` module, nor for Python 3.14):
+#
+#   uv venv .venv-torch --python 3.12
+#   uv pip install --python .venv-torch/Scripts/python.exe -r requirements-torch.txt
+#
+# (jupyter/nbconvert/ipykernel are only needed to re-execute the demo notebook.)
+torch
+numpy
+matplotlib

@@ -42,6 +42,7 @@ It is described by five parameters (`heston::HestonParams`):
   - **semi-analytic** delta/gamma/rho on the Fourier pricer (`analytic_greeks`), obtained by differentiating the Carr–Madan integral under the integral sign (one quadrature pass for price + Greeks).
   Both are validated against the closed-form Black–Scholes Greeks and put–call parity.
 - **Python bindings** — a `pybind11` module (`heston`) exposing the pricers, implied vol, Greeks and calibration, plus a demo notebook that plots the implied-vol surface, the Greek profiles and a calibration round-trip.
+- **Deep-learning volatility** — a PyTorch neural network (`deep_calibration/`) that learns the map *Heston parameters → implied-vol surface* on a fixed 8×11 grid, trained offline against the Fourier engine, enabling **calibration by network inversion in milliseconds**. Reproduces Horvath, Muguruza & Tomas (2019), *Deep Learning Volatility* — the grid/image-based counterpart to the (pointwise) GPR pricer.
 - **Calibration** — fit the five parameters to a set of market quotes:
   - to **implied-vol** quotes via Nelder–Mead (`calibrate_heston_to_iv`),
   - to **price** quotes via CMA-ES (`calibrate_heston_to_prices_cmaes`), with an optimization trace and final residuals.
@@ -261,6 +262,27 @@ calibration round-trip (recovering the parameters from synthetic prices):
 | Implied-vol surface | Greeks vs strike | Calibration round-trip |
 |:---:|:---:|:---:|
 | ![IV surface](notebooks/img/iv_surface.png) | ![Greeks](notebooks/img/greeks.png) | ![Calibration](notebooks/img/calibration.png) |
+
+## Deep-learning volatility
+
+A neural pricing map for Heston, after Horvath, Muguruza & Tomas (2019). A small
+feed-forward network (4 hidden layers × 30 ELU units) learns *parameters → the
+8×11 implied-vol grid*, trained offline against the Fourier engine; calibration
+then inverts the fast, differentiable network in milliseconds. The whole
+pipeline lives in [`deep_calibration/`](deep_calibration/) (see its README for
+the two-environment workflow) and is demonstrated in
+[`notebooks/deep_calibration_demo.ipynb`](notebooks/deep_calibration_demo.ipynb).
+
+On a held-out test set the network approximates the surface to **~10 bps RMSE**,
+calibrates a full surface in **~100 ms**, and prices **~10⁵× faster** than the
+Fourier engine:
+
+| Approximation error | Network vs. Fourier | Calibration (≈100 ms) |
+|:---:|:---:|:---:|
+| ![accuracy](notebooks/img/dnn_accuracy.png) | ![surface fit](notebooks/img/dnn_surface_fit.png) | ![deep calibration](notebooks/img/dnn_calibration.png) |
+
+This is the grid/image-based **neural** counterpart to the pointwise **GPR**
+surrogate above — two takes on replacing a slow pricer with a fast learned map.
 
 ## Numerical notes & conventions
 

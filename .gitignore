@@ -25,6 +25,12 @@ __pycache__/
 *.pyd
 .ipynb_checkpoints/
 
+# Deep-learning volatility: torch venv and large generated datasets.
+# The small held-out test set and the trained checkpoint are kept (for the demo).
+.venv-torch/
+deep_calibration/data/*.npz
+!deep_calibration/data/heston_iv_test.npz
+
 # IDE / editor
 .vscode/
 .idea/
